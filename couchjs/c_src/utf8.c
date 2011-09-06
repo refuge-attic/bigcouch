@@ -11,13 +11,7 @@
 // the License.
 
 #include "config.h"
-#ifdef HAVE_JS_JSAPI_H
-#include <js/jsapi.h>
-#elif HAVE_MOZJS_JSAPI_H
-#include <mozjs/jsapi.h>
-#else
-#include <jsapi.h>
-#endif
+#include "sm.h"
 
 static int
 enc_char(uint8 *utf8Buffer, uint32 ucs4Char)
@@ -73,7 +67,7 @@ enc_charbuf(const jschar* src, size_t srclen, char* dst, size_t* dstlenp)
         srclen--;
 
         if((c >= 0xDC00) && (c <= 0xDFFF)) goto bad_surrogate;
-
+        
         if(c < 0xD800 || c > 0xDBFF)
         {
             v = c;
@@ -111,7 +105,7 @@ enc_charbuf(const jschar* src, size_t srclen, char* dst, size_t* dstlenp)
         }
         dstlen -= utf8Len;
     }
-
+    
     *dstlenp = (origDstlen - dstlen);
     return JS_TRUE;
 
@@ -128,22 +122,26 @@ char*
 enc_string(JSContext* cx, jsval arg, size_t* buflen)
 {
     JSString* str = NULL;
-    jschar* src = NULL;
+    const jschar* src = NULL;
     char* bytes = NULL;
     size_t srclen = 0;
     size_t byteslen = 0;
-
+    
     str = JS_ValueToString(cx, arg);
     if(!str) goto error;
 
+#ifdef SM185
+    src = JS_GetStringCharsAndLength(cx, str, &srclen);
+#else
     src = JS_GetStringChars(str);
     srclen = JS_GetStringLength(str);
+#endif
 
     if(!enc_charbuf(src, srclen, NULL, &byteslen)) goto error;
-
-    bytes = JS_malloc(cx, (byteslen) + 1);
+    
+    bytes = (char*) JS_malloc(cx, (byteslen) + 1);
     bytes[byteslen] = 0;
-
+    
     if(!enc_charbuf(src, srclen, bytes, &byteslen)) goto error;
 
     if(buflen) *buflen = byteslen;
@@ -205,17 +203,17 @@ dec_charbuf(const char *src, size_t srclen, jschar *dst, size_t *dstlenp)
     {
         v = (uint8) *src;
         n = 1;
-
+        
         if(v & 0x80)
         {
             while(v & (0x80 >> n))
             {
                 n++;
             }
-
+            
             if(n > srclen) goto buffer_too_small;
             if(n == 1 || n > 6) goto bad_character;
-
+            
             for(j = 1; j < n; j++)
             {
                 if((src[j] & 0xC0) != 0x80) goto bad_character;
@@ -225,13 +223,13 @@ dec_charbuf(const char *src, size_t srclen, jschar *dst, size_t *dstlenp)
             if(v >= 0x10000)
             {
                 v -= 0x10000;
-
+                
                 if(v > 0xFFFFF || dstlen < 2)
                 {
                     *dstlenp = (origDstlen - dstlen);
                     return JS_FALSE;
                 }
-
+                
                 if(dstlen < 2) goto buffer_too_small;
 
                 if(dst)
@@ -270,10 +268,10 @@ dec_string(JSContext* cx, const char* bytes, size_t byteslen)
     JSString* str = NULL;
     jschar* chars = NULL;
     size_t charslen;
-
+    
     if(!dec_charbuf(bytes, byteslen, NULL, &charslen)) goto error;
 
-    chars = JS_malloc(cx, (charslen + 1) * sizeof(jschar));
+    chars = (jschar*) JS_malloc(cx, (charslen + 1) * sizeof(jschar));
     if(!chars) return NULL;
     chars[charslen] = 0;
 
