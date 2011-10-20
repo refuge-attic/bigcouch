@@ -46,7 +46,7 @@ var resolveModule = function(names, mod, root) {
   } else if (root) {
     mod = {current : root};
   }
-  if (!mod.current[n]) {
+  if (mod.current[n] === undefined) {
     throw ["error", "invalid_require_path", 'Object has no property "'+n+'". '+JSON.stringify(mod.current)];
   }
   return resolveModule(names, {
@@ -91,9 +91,9 @@ var Couch = {
           }
           sandbox.require = require;
         }
-        var functionObject = evalcx(source, sandbox);
+        var functionObject = evalcx("(" + source + ")", sandbox);
       } else {
-        var functionObject = eval(source);
+        var functionObject = eval("(" + source + ")");
       }
     } catch (err) {
       throw(["error", "compilation_error", err.toSource() + " (" + source + ")"]);
